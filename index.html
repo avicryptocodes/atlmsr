@@ -3904,21 +3904,25 @@ async function hydrateOpenInterest(rows, onProgress) {
           row.longAccount = buyRatio; row.shortAccount = sellRatio;
         } else { row.longShortRatio = 0; row.longAccount = 0; row.shortAccount = 0; }
       } else {
-        const [current, hist, ratio] = await Promise.all([
-          safeJson(_EP.bf + '/openInterest?symbol=' + row.symbol, null),
-          safeJson(_EP.bf + '/openInterestHist?symbol=' + row.symbol + '&period=' + config.oiPeriod + '&limit=' + config.oiLimit, []),
-          safeJson(_EP.bd + '/topLongShortAccountRatio?symbol=' + row.symbol + '&period=' + config.lsPeriod + '&limit=' + config.lsLimit, [])
+        // openInterestHist is CORS-blocked on GitHub Pages — use Bybit OI for all browser-hosted deployments
+        const bybitSym = row.symbol; // already normalized USDT symbol
+        const [oi, lsData] = await Promise.all([
+          safeJson(_EP.by + '/open-interest?category=linear&symbol=' + bybitSym + '&intervalTime=' + config.oiPeriod + '&limit=' + (config.oiLimit + 1), { result: { list: [] } }),
+          safeJson(_EP.by + '/account-ratio?category=linear&symbol=' + bybitSym + '&period=' + config.lsPeriod + '&limit=' + config.lsLimit, { result: { list: [] } })
         ]);
-        row.openInterest = current ? Number(current.openInterest || 0) * row.price : 0;
-        if (Array.isArray(hist) && hist.length >= 2) {
-          const oldOi = Number(hist[0].sumOpenInterestValue || hist[0].sumOpenInterest || 0);
-          const newOi = Number(hist[hist.length - 1].sumOpenInterestValue || hist[hist.length - 1].sumOpenInterest || 0);
-          row.oiChange = oldOi ? (newOi - oldOi) / oldOi : 0;
-        } else { row.oiChange = 0; }
-        const latestRatio = Array.isArray(ratio) && ratio.length ? ratio[ratio.length - 1] : null;
-        row.longShortRatio = latestRatio ? Number(latestRatio.longShortRatio || 0) : 0;
-        row.longAccount    = latestRatio ? Number(latestRatio.longAccount    || 0) : 0;
-        row.shortAccount   = latestRatio ? Number(latestRatio.shortAccount   || 0) : 0;
+        const list = oi?.result?.list?.slice().reverse() || [];
+        const oldOi = list.length >= 2 ? Number(list[0].openInterest || 0) : 0;
+        const newOi = list.length ? Number(list[list.length - 1].openInterest || 0) : 0;
+        row.openInterest = newOi ? newOi * row.price : 0;
+        row.oiChange = oldOi && newOi ? (newOi - oldOi) / oldOi : 0;
+        const lsList = lsData?.result?.list || [];
+        if (lsList.length) {
+          const latest = lsList[lsList.length - 1];
+          const buy  = Number(latest.buyRatio  || latest.longRatio  || 0);
+          const sell = Number(latest.sellRatio || latest.shortRatio || 0);
+          row.longShortRatio = sell > 0 ? buy / sell : 0;
+          row.longAccount = buy; row.shortAccount = sell;
+        } else { row.longShortRatio = 0; row.longAccount = 0; row.shortAccount = 0; }
       }
     }));
     if (onProgress) onProgress(chunk);
@@ -5685,21 +5689,24 @@ async function runSingleScan() {
         longAccount = buy; shortAccount = sell;
       }
     } else {
-      const [oiCurrent, oiHist, lsRatio] = await Promise.all([
-        safeJson(_EP.bf + '/openInterest?symbol=' + symbol, null),
-        safeJson(_EP.bf + '/openInterestHist?symbol=' + symbol + '&period=' + config.oiPeriod + '&limit=' + config.oiLimit, []),
-        safeJson(_EP.bd + '/topLongShortAccountRatio?symbol=' + symbol + '&period=' + config.lsPeriod + '&limit=' + config.lsLimit, [])
+      // openInterestHist is CORS-blocked — use Bybit OI for browser-hosted deployments
+      const [oi2, lsData2] = await Promise.all([
+        safeJson(_EP.by + '/open-interest?category=linear&symbol=' + symbol + '&intervalTime=' + config.oiPeriod + '&limit=' + (config.oiLimit + 1), { result: { list: [] } }),
+        safeJson(_EP.by + '/account-ratio?category=linear&symbol=' + symbol + '&period=' + config.lsPeriod + '&limit=' + config.lsLimit, { result: { list: [] } })
       ]);
-      openInterest = oiCurrent ? Number(oiCurrent.openInterest || 0) * price : 0;
-      if (Array.isArray(oiHist) && oiHist.length >= 2) {
-        const oldOi = Number(oiHist[0].sumOpenInterestValue || oiHist[0].sumOpenInterest || 0);
-        const newOi = Number(oiHist[oiHist.length-1].sumOpenInterestValue || oiHist[oiHist.length-1].sumOpenInterest || 0);
-        oiChange = oldOi ? (newOi - oldOi) / oldOi : 0;
+      const oiList2 = oi2?.result?.list?.slice().reverse() || [];
+      const oldOi2 = oiList2.length >= 2 ? Number(oiList2[0].openInterest || 0) : 0;
+      const newOi2 = oiList2.length ? Number(oiList2[oiList2.length - 1].openInterest || 0) : 0;
+      openInterest = newOi2 ? newOi2 * price : 0;
+      oiChange = oldOi2 && newOi2 ? (newOi2 - oldOi2) / oldOi2 : 0;
+      const lsList2 = lsData2?.result?.list || [];
+      if (lsList2.length) {
+        const latest2 = lsList2[lsList2.length - 1];
+        const buy2  = Number(latest2.buyRatio  || latest2.longRatio  || 0);
+        const sell2 = Number(latest2.sellRatio || latest2.shortRatio || 0);
+        longShortRatio = sell2 > 0 ? buy2 / sell2 : 0;
+        longAccount = buy2; shortAccount = sell2;
       }
-      const latestRatio = Array.isArray(lsRatio) && lsRatio.length ? lsRatio[lsRatio.length - 1] : null;
-      longShortRatio = latestRatio ? Number(latestRatio.longShortRatio || 0) : 0;
-      longAccount    = latestRatio ? Number(latestRatio.longAccount    || 0) : 0;
-      shortAccount   = latestRatio ? Number(latestRatio.shortAccount   || 0) : 0;
     }
 
     const row = {
