@@ -1786,9 +1786,12 @@
 <script>
 
 /* ══════════════════════════════════════
-   SMC ANALYSIS ENGINE (smcAnalysisEngine.js — injected)
-   DO NOT MODIFY THIS SECTION
+   SMC ANALYSIS ENGINE — IIFE scoped to avoid global conflicts
+   Only window.analyzeMarket is exposed
 ══════════════════════════════════════ */
+const analyzeMarket = (() => {
+  'use strict';
+
 const DEFAULT_OPTIONS = {
   swingLookback: 3,
   swingMinSeparation: 2,
@@ -3335,6 +3338,9 @@ const analyzeMarket = (input, customOptions = {}) => {
   });
 };
 
+
+  return analyzeMarket;
+})();
 /* ── END SMC ENGINE ── */
 
 /* ══════════════════════════════════════
