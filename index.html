@@ -2505,15 +2505,15 @@ function analyzeStructure(candles, tf) {
   const sweepLowRecent  = candles.slice(-20).some(c => c.low  < recentLow.price  && c.close > recentLow.price);
   const sweepHighRecent = candles.slice(-20).some(c => c.high > recentHigh.price && c.close < recentHigh.price);
 
-  if (sweepLowRecent && higherHighs && last.close > prevHigh.price) {
+  if (sweepLowRecent && last.close > prevHigh.price) {
     mss = { direction: 'Bullish', type: 'MSS',
       label: 'MSS ↑', confidence: choch ? 'High' : 'Medium',
-      trigger: 'SSL swept → HH formed → structure flipped bullish' };
+      trigger: 'SSL swept → close above prev High → structure flipped bullish' };
   }
-  if (sweepHighRecent && lowerLows && last.close < prevLow.price) {
+  if (sweepHighRecent && last.close < prevLow.price) {
     mss = { direction: 'Bearish', type: 'MSS',
       label: 'MSS ↓', confidence: choch ? 'High' : 'Medium',
-      trigger: 'BSL swept → LL formed → structure flipped bearish' };
+      trigger: 'BSL swept → close below prev Low → structure flipped bearish' };
   }
 
   let smcEvent = null;
@@ -2692,16 +2692,17 @@ function deriveTrade(row, primary, higherAnalyses, tf) {
     const mrlh = primary.mostRecentLowerHigh?.price;
     const mrhl = primary.mostRecentHigherLow?.price;
 
-    // LONG rabbit: close above most recent Lower High, no sweep preceded it
-    if (bodyStrong && volQualifies && !primary.sweepLow && !primary.sweepHigh
+    // LONG rabbit: close above most recent Lower High with strong body + volume
+    // NOTE: sweep presence is allowed — it scores higher, not disqualified
+    if (bodyStrong && volQualifies
         && mrlh && lastCandle.close > mrlh && lastCandle.close > lastCandle.open) {
       rabbitSide = 'LONG';
       rabbitBreakLevel = mrlh;
       rabbitCandle = lastCandle;
     }
 
-    // SHORT rabbit: close below most recent Higher Low, no sweep preceded it
-    if (!rabbitSide && bodyStrong && volQualifies && !primary.sweepLow && !primary.sweepHigh
+    // SHORT rabbit: close below most recent Higher Low with strong body + volume
+    if (!rabbitSide && bodyStrong && volQualifies
         && mrhl && lastCandle.close < mrhl && lastCandle.close < lastCandle.open) {
       rabbitSide = 'SHORT';
       rabbitBreakLevel = mrhl;
