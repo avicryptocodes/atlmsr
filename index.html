@@ -1145,7 +1145,91 @@
     .coil-empty-icon { font-size: 32px; color: var(--muted); margin-bottom: 12px; opacity: 0.4; }
     .coil-empty-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: var(--sub); margin-bottom: 8px; }
     .coil-empty-sub { font-size: 11px; color: var(--muted); max-width: 420px; line-height: 1.65; }
-  </style>
+  
+    /* ═══ SMC ENGINE PANEL ═══ */
+    .smc-engine-panel {
+      border: 1px solid rgba(64,196,255,0.18);
+      background: linear-gradient(180deg, rgba(64,196,255,0.04) 0%, transparent 60%);
+      margin-bottom: 1px;
+      position: relative; overflow: hidden;
+    }
+    .smc-engine-panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(64,196,255,0.5), transparent);
+    }
+    .smc-engine-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid rgba(64,196,255,0.12);
+    }
+    .smc-engine-label {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700; font-size: 9px;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(64,196,255,0.7);
+    }
+    .smc-engine-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--cyan); flex-shrink: 0;
+      animation: htblink 1.8s ease-in-out infinite;
+    }
+    .smc-engine-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: rgba(64,196,255,0.06);
+    }
+    @media (max-width: 480px) { .smc-engine-grid { grid-template-columns: repeat(2, 1fr); } }
+    .smc-engine-cell {
+      background: rgba(8,11,15,0.88);
+      padding: 8px 11px;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .smc-cell-lbl {
+      font-family: 'Syne', sans-serif;
+      font-size: 7.5px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted);
+    }
+    .smc-cell-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; font-weight: 600; color: var(--text);
+    }
+    .smc-engine-zones {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1px; background: rgba(64,196,255,0.06);
+      border-top: 1px solid rgba(64,196,255,0.08);
+    }
+    @media (max-width: 480px) { .smc-engine-zones { grid-template-columns: 1fr; } }
+    .smc-zone-block {
+      background: rgba(8,11,15,0.88);
+      padding: 8px 11px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .smc-zone-lbl {
+      font-family: 'Syne', sans-serif;
+      font-size: 7.5px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: rgba(64,196,255,0.5);
+    }
+    .smc-zone-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; font-weight: 600; color: var(--text);
+    }
+    .smc-zone-src {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; color: var(--muted);
+    }
+    .smc-bias-reason {
+      padding: 8px 13px 10px;
+      border-top: 1px solid rgba(64,196,255,0.08);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .smc-bias-text {
+      font-size: 10px; color: var(--sub); line-height: 1.6;
+    }
+    @media (max-width: 900px) { .col-smc-sig, .col-smc-conf { display: none; } }
+</style>
 </head>
 <body>
 
@@ -1351,10 +1435,12 @@
             <th class="col-ls">L/S</th>
             <th class="col-trend">Trend</th>
             <th class="col-bias">Bias</th>
+            <th class="col-smc-sig">SMC Signal</th>
+            <th class="col-smc-conf">SMC Conf</th>
           </tr>
         </thead>
         <tbody id="scannerRows">
-          <tr><td colspan="10" class="empty-row">Click <b>Scan Market</b> to start.</td></tr>
+          <tr><td colspan="12" class="empty-row">Click <b>Scan Market</b> to start.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1698,6 +1784,1656 @@
 </section>
 
 <script>
+
+/* ══════════════════════════════════════
+   SMC ANALYSIS ENGINE (smcAnalysisEngine.js — injected)
+   DO NOT MODIFY THIS SECTION
+══════════════════════════════════════ */
+const DEFAULT_OPTIONS = {
+  swingLookback: 3,
+  swingMinSeparation: 2,
+  swingRangeWindow: 14,
+  swingProminenceFactor: 0.35,
+  displacementWindow: 20,
+  displacementFactor: 1.5,
+  liquidityToleranceFactor: 0.12,
+  liquidityRangeWindow: 14,
+  liquidityMinTouches: 2,
+  maxTrackedSwings: 200,
+  consolidationWindow: 12,
+  consolidationFactor: 0.65,
+  proximityFactor: 0.2,
+  triggerThreshold: 18,
+  minConfidenceForReady: 60,
+  minLiquidityTouches: 2,
+  requireZoneConfluence: false,
+  allowContinuationEntries: true,
+  entryRecencyWindow: 20,
+};
+
+const EMPTY_LOCATION = {
+  currentPrice: null,
+  equilibrium: null,
+  state: 'BALANCED',
+  rangeHigh: null,
+  rangeLow: null,
+  source: 'NONE',
+};
+
+const EMPTY_ZONE_INTERACTION = {
+  activeOrderBlock: null,
+  activeFvg: null,
+  nearbyLiquidity: null,
+};
+
+const EMPTY_CONTEXT = {
+  marketState: 'BALANCED',
+  consolidation: false,
+  session: 'UNKNOWN',
+};
+
+const EMPTY_OUTPUT = {
+  trend: 'RANGE',
+  structure: [],
+  liquidity: [],
+  orderBlocks: [],
+  fvg: [],
+  bias: {
+    direction: 'NEUTRAL',
+    confidence: 0,
+    reasoning: 'Insufficient data for deterministic SMC analysis.',
+    invalidation: null,
+  },
+  trade: {
+    state: 'NO_TRADE',
+    direction: 'NEUTRAL',
+    setup: 'NONE',
+    quality: 'LOW',
+    confidence: 0,
+    reasoning: 'Insufficient data for deterministic trade-state resolution.',
+    entryZone: null,
+    target: null,
+  },
+};
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const isFiniteNumber = (value) => Number.isFinite(value);
+
+const toCandle = (candle, index) => ({
+  index,
+  time: candle.time,
+  open: Number(candle.open),
+  high: Number(candle.high),
+  low: Number(candle.low),
+  close: Number(candle.close),
+  volume: Number(candle.volume ?? 0),
+});
+
+const normalizeCandles = (data) => {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map(toCandle)
+    .filter(
+      (candle) =>
+        candle.high >= candle.low &&
+        isFiniteNumber(candle.open) &&
+        isFiniteNumber(candle.high) &&
+        isFiniteNumber(candle.low) &&
+        isFiniteNumber(candle.close) &&
+        isFiniteNumber(candle.volume),
+    );
+};
+
+const buildPrefixSum = (values) => {
+  const prefix = new Array(values.length + 1).fill(0);
+
+  for (let index = 0; index < values.length; index += 1) {
+    prefix[index + 1] = prefix[index] + values[index];
+  }
+
+  return prefix;
+};
+
+const getWindowAverage = (prefix, start, end) => {
+  if (end < start) {
+    return 0;
+  }
+
+  const safeStart = Math.max(0, start);
+  const safeEnd = Math.min(prefix.length - 2, end);
+  const count = safeEnd - safeStart + 1;
+
+  if (count <= 0) {
+    return 0;
+  }
+
+  return (prefix[safeEnd + 1] - prefix[safeStart]) / count;
+};
+
+const getRollingAverage = (prefix, endIndex, window) =>
+  getWindowAverage(prefix, endIndex - window + 1, endIndex);
+
+const enrichCandles = (candles) => {
+  const ranges = candles.map((candle) => candle.high - candle.low);
+  const bodies = candles.map((candle) => Math.abs(candle.close - candle.open));
+  const trueRanges = candles.map((candle, index) => {
+    if (index === 0) {
+      return candle.high - candle.low;
+    }
+
+    const previousClose = candles[index - 1].close;
+    return Math.max(
+      candle.high - candle.low,
+      Math.abs(candle.high - previousClose),
+      Math.abs(candle.low - previousClose),
+    );
+  });
+
+  return {
+    candles,
+    ranges,
+    bodies,
+    trueRanges,
+    rangePrefix: buildPrefixSum(ranges),
+    trueRangePrefix: buildPrefixSum(trueRanges),
+  };
+};
+
+const getLatest = (items, predicate = () => true) => {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index])) {
+      return items[index];
+    }
+  }
+
+  return null;
+};
+
+const detectSwings = (market, options) => {
+  const { candles, rangePrefix } = market;
+  const {
+    swingLookback,
+    swingMinSeparation,
+    swingRangeWindow,
+    swingProminenceFactor,
+    maxTrackedSwings,
+  } = options;
+
+  if (candles.length < swingLookback * 2 + 1) {
+    return [];
+  }
+
+  const swings = [];
+  let lastHighIndex = -Infinity;
+  let lastLowIndex = -Infinity;
+
+  for (let index = swingLookback; index < candles.length - swingLookback; index += 1) {
+    const current = candles[index];
+    let isSwingHigh = true;
+    let isSwingLow = true;
+
+    for (let offset = 1; offset <= swingLookback; offset += 1) {
+      const left = candles[index - offset];
+      const right = candles[index + offset];
+
+      if (current.high <= left.high || current.high <= right.high) {
+        isSwingHigh = false;
+      }
+
+      if (current.low >= left.low || current.low >= right.low) {
+        isSwingLow = false;
+      }
+
+      if (!isSwingHigh && !isSwingLow) {
+        break;
+      }
+    }
+
+    if (!isSwingHigh && !isSwingLow) {
+      continue;
+    }
+
+    const localAverageRange = getRollingAverage(rangePrefix, index, swingRangeWindow) || 0;
+    const prominenceThreshold = localAverageRange * swingProminenceFactor;
+
+    if (isSwingHigh) {
+      const nearbyReference = Math.max(candles[index - 1].high, candles[index + 1].high);
+      const prominence = current.high - nearbyReference;
+
+      if (prominence >= prominenceThreshold && index - lastHighIndex >= swingMinSeparation) {
+        swings.push({
+          type: 'HIGH',
+          index,
+          time: current.time,
+          price: current.high,
+        });
+        lastHighIndex = index;
+      }
+    }
+
+    if (isSwingLow) {
+      const nearbyReference = Math.min(candles[index - 1].low, candles[index + 1].low);
+      const prominence = nearbyReference - current.low;
+
+      if (prominence >= prominenceThreshold && index - lastLowIndex >= swingMinSeparation) {
+        swings.push({
+          type: 'LOW',
+          index,
+          time: current.time,
+          price: current.low,
+        });
+        lastLowIndex = index;
+      }
+    }
+  }
+
+  return swings
+    .sort((left, right) => left.index - right.index)
+    .slice(-maxTrackedSwings);
+};
+
+const detectStructure = (market, swings) => {
+  const { candles } = market;
+
+  if (!swings.length || !candles.length) {
+    return [];
+  }
+
+  const swingHighs = swings.filter((swing) => swing.type === 'HIGH');
+  const swingLows = swings.filter((swing) => swing.type === 'LOW');
+  const structure = [];
+
+  let highPointer = 0;
+  let lowPointer = 0;
+  let activeHigh = null;
+  let activeLow = null;
+  let lastBreakDirection = null;
+
+  for (let candleIndex = 0; candleIndex < candles.length; candleIndex += 1) {
+    while (highPointer < swingHighs.length && swingHighs[highPointer].index < candleIndex) {
+      activeHigh = swingHighs[highPointer];
+      highPointer += 1;
+    }
+
+    while (lowPointer < swingLows.length && swingLows[lowPointer].index < candleIndex) {
+      activeLow = swingLows[lowPointer];
+      lowPointer += 1;
+    }
+
+    const candle = candles[candleIndex];
+    const brokeHigh = activeHigh && candle.high > activeHigh.price;
+    const brokeLow = activeLow && candle.low < activeLow.price;
+
+    if (brokeHigh && brokeLow) {
+      const bullishBreach = candle.high - activeHigh.price;
+      const bearishBreach = activeLow.price - candle.low;
+
+      if (bullishBreach >= bearishBreach) {
+        const kind = lastBreakDirection === 'BEARISH' ? 'CHOCH' : 'BOS_BULLISH';
+        structure.push({
+          type: kind,
+          direction: 'BULLISH',
+          index: candleIndex,
+          time: candle.time,
+          brokenSwingIndex: activeHigh.index,
+          brokenSwingTime: activeHigh.time,
+          level: activeHigh.price,
+        });
+        lastBreakDirection = 'BULLISH';
+        activeHigh = null;
+      } else {
+        const kind = lastBreakDirection === 'BULLISH' ? 'CHOCH' : 'BOS_BEARISH';
+        structure.push({
+          type: kind,
+          direction: 'BEARISH',
+          index: candleIndex,
+          time: candle.time,
+          brokenSwingIndex: activeLow.index,
+          brokenSwingTime: activeLow.time,
+          level: activeLow.price,
+        });
+        lastBreakDirection = 'BEARISH';
+        activeLow = null;
+      }
+      continue;
+    }
+
+    if (brokeHigh) {
+      const kind = lastBreakDirection === 'BEARISH' ? 'CHOCH' : 'BOS_BULLISH';
+      structure.push({
+        type: kind,
+        direction: 'BULLISH',
+        index: candleIndex,
+        time: candle.time,
+        brokenSwingIndex: activeHigh.index,
+        brokenSwingTime: activeHigh.time,
+        level: activeHigh.price,
+      });
+      lastBreakDirection = 'BULLISH';
+      activeHigh = null;
+    } else if (brokeLow) {
+      const kind = lastBreakDirection === 'BULLISH' ? 'CHOCH' : 'BOS_BEARISH';
+      structure.push({
+        type: kind,
+        direction: 'BEARISH',
+        index: candleIndex,
+        time: candle.time,
+        brokenSwingIndex: activeLow.index,
+        brokenSwingTime: activeLow.time,
+        level: activeLow.price,
+      });
+      lastBreakDirection = 'BEARISH';
+      activeLow = null;
+    }
+  }
+
+  return structure;
+};
+
+const determineTrend = (swings, structure) => {
+  const recentHighs = swings.filter((swing) => swing.type === 'HIGH').slice(-2);
+  const recentLows = swings.filter((swing) => swing.type === 'LOW').slice(-2);
+  const latestStructure = getLatest(structure);
+
+  if (recentHighs.length < 2 || recentLows.length < 2) {
+    return 'RANGE';
+  }
+
+  const [previousHigh, currentHigh] = recentHighs;
+  const [previousLow, currentLow] = recentLows;
+
+  if (
+    currentHigh.price > previousHigh.price &&
+    currentLow.price > previousLow.price &&
+    latestStructure?.direction !== 'BEARISH'
+  ) {
+    return 'UPTREND';
+  }
+
+  if (
+    currentHigh.price < previousHigh.price &&
+    currentLow.price < previousLow.price &&
+    latestStructure?.direction !== 'BULLISH'
+  ) {
+    return 'DOWNTREND';
+  }
+
+  return 'RANGE';
+};
+
+const detectDisplacements = (market, structure, options) => {
+  const { candles, bodies, trueRangePrefix } = market;
+  const { displacementWindow, displacementFactor } = options;
+
+  const directionByIndex = new Map(structure.map((event) => [event.index, event.direction]));
+  const displacements = [];
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const averageTrueRange = getRollingAverage(trueRangePrefix, index, displacementWindow);
+    const bodySize = bodies[index];
+
+    if (!averageTrueRange || bodySize <= averageTrueRange * displacementFactor) {
+      continue;
+    }
+
+    const candle = candles[index];
+    const candleDirection = candle.close >= candle.open ? 'BULLISH' : 'BEARISH';
+    const structureDirection = directionByIndex.get(index);
+
+    if (structureDirection && structureDirection !== candleDirection) {
+      continue;
+    }
+
+    displacements.push({
+      index,
+      time: candle.time,
+      direction: candleDirection,
+      bodySize,
+      averageRange: averageTrueRange,
+      strength: Number((bodySize / averageTrueRange).toFixed(2)),
+    });
+  }
+
+  return displacements;
+};
+
+const detectFvg = (market, displacements) => {
+  const { candles } = market;
+
+  if (candles.length < 3) {
+    return [];
+  }
+
+  const displacementIndexSet = new Set(displacements.map((event) => event.index));
+  const gaps = [];
+
+  for (let index = 2; index < candles.length; index += 1) {
+    if (
+      !displacementIndexSet.has(index) &&
+      !displacementIndexSet.has(index - 1) &&
+      !displacementIndexSet.has(index - 2)
+    ) {
+      continue;
+    }
+
+    const current = candles[index];
+    const anchor = candles[index - 2];
+
+    if (current.low > anchor.high) {
+      let mitigatedAt = null;
+
+      for (let scanIndex = index + 1; scanIndex < candles.length; scanIndex += 1) {
+        if (candles[scanIndex].low <= anchor.high) {
+          mitigatedAt = candles[scanIndex].time;
+          break;
+        }
+      }
+
+      gaps.push({
+        type: 'BULLISH',
+        index,
+        time: current.time,
+        start: anchor.high,
+        end: current.low,
+        size: current.low - anchor.high,
+        mitigated: Boolean(mitigatedAt),
+        mitigatedAt,
+      });
+    } else if (current.high < anchor.low) {
+      let mitigatedAt = null;
+
+      for (let scanIndex = index + 1; scanIndex < candles.length; scanIndex += 1) {
+        if (candles[scanIndex].high >= anchor.low) {
+          mitigatedAt = candles[scanIndex].time;
+          break;
+        }
+      }
+
+      gaps.push({
+        type: 'BEARISH',
+        index,
+        time: current.time,
+        start: current.high,
+        end: anchor.low,
+        size: anchor.low - current.high,
+        mitigated: Boolean(mitigatedAt),
+        mitigatedAt,
+      });
+    }
+  }
+
+  return gaps;
+};
+
+const detectOrderBlocks = (market, displacements, structure) => {
+  const { candles } = market;
+
+  if (!candles.length || !displacements.length) {
+    return [];
+  }
+
+  const lastStructureAtOrBefore = new Array(candles.length).fill(null);
+  const structureByIndex = new Map(structure.map((event) => [event.index, event]));
+  let lastEvent = null;
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const event = structureByIndex.get(index);
+    if (event) {
+      lastEvent = event;
+    }
+    lastStructureAtOrBefore[index] = lastEvent;
+  }
+
+  const seen = new Set();
+
+  return displacements.reduce((blocks, displacement) => {
+    const expectedOpposite = displacement.direction === 'BULLISH' ? 'BEARISH' : 'BULLISH';
+    const structureEvent = lastStructureAtOrBefore[displacement.index];
+
+    if (structureEvent && structureEvent.direction !== displacement.direction) {
+      return blocks;
+    }
+
+    for (let scanIndex = displacement.index - 1; scanIndex >= 0; scanIndex -= 1) {
+      const candle = candles[scanIndex];
+      const candleDirection = candle.close >= candle.open ? 'BULLISH' : 'BEARISH';
+
+      if (candleDirection !== expectedOpposite) {
+        continue;
+      }
+
+      const key = `${scanIndex}:${displacement.direction}`;
+      if (seen.has(key)) {
+        return blocks;
+      }
+
+      seen.add(key);
+
+      let mitigatedAt = null;
+      for (let mitigationIndex = displacement.index + 1; mitigationIndex < candles.length; mitigationIndex += 1) {
+        const mitigationCandle = candles[mitigationIndex];
+        const touched =
+          displacement.direction === 'BULLISH'
+            ? mitigationCandle.low <= candle.high
+            : mitigationCandle.high >= candle.low;
+
+        if (touched) {
+          mitigatedAt = mitigationCandle.time;
+          break;
+        }
+      }
+
+      const causedBreak = Boolean(
+        structureEvent &&
+          structureEvent.direction === displacement.direction &&
+          structureEvent.index >= displacement.index - 1 &&
+          structureEvent.index <= displacement.index + 1,
+      );
+
+      blocks.push({
+        type: displacement.direction,
+        index: scanIndex,
+        time: candle.time,
+        high: candle.high,
+        low: candle.low,
+        originDisplacementIndex: displacement.index,
+        mitigated: Boolean(mitigatedAt),
+        mitigatedAt,
+        causedBreak,
+        strength: causedBreak ? 'HIGH' : 'NORMAL',
+      });
+      return blocks;
+    }
+
+    return blocks;
+  }, []);
+};
+
+const detectLiquidity = (swings, market, options) => {
+  const { trueRangePrefix } = market;
+  const { liquidityToleranceFactor, liquidityRangeWindow, liquidityMinTouches } = options;
+
+  if (swings.length < liquidityMinTouches) {
+    return [];
+  }
+
+  const groups = [];
+
+  for (const swing of swings) {
+    const averageRange = getRollingAverage(trueRangePrefix, swing.index, liquidityRangeWindow) || 0;
+    const tolerance = Math.max(averageRange * liquidityToleranceFactor, Number.EPSILON);
+    let matchedGroup = null;
+
+    for (const group of groups) {
+      if (group.swingType !== swing.type) {
+        continue;
+      }
+
+      if (Math.abs(group.level - swing.price) <= tolerance) {
+        matchedGroup = group;
+        break;
+      }
+    }
+
+    if (!matchedGroup) {
+      groups.push({
+        swingType: swing.type,
+        level: swing.price,
+        touches: [swing],
+      });
+      continue;
+    }
+
+    matchedGroup.touches.push(swing);
+    const total = matchedGroup.touches.reduce((sum, touch) => sum + touch.price, 0);
+    matchedGroup.level = total / matchedGroup.touches.length;
+  }
+
+  return groups
+    .filter((group) => group.touches.length >= liquidityMinTouches)
+    .map((group) => {
+      const firstTouch = group.touches[0];
+      const lastTouch = group.touches[group.touches.length - 1];
+      const spacing = lastTouch.index - firstTouch.index;
+
+      return {
+        type: group.swingType === 'HIGH' ? 'BUY_SIDE' : 'SELL_SIDE',
+        level: Number(group.level.toFixed(8)),
+        touches: group.touches.length,
+        firstIndex: firstTouch.index,
+        secondIndex: lastTouch.index,
+        firstTime: firstTouch.time,
+        secondTime: lastTouch.time,
+        clustered: group.touches.length >= 3,
+        compressed: spacing <= Math.max(group.touches.length * 4, 8),
+      };
+    });
+};
+
+const getDominantStructureRange = (swings, structure) => {
+  const latestStructure = getLatest(structure);
+
+  if (!latestStructure) {
+    return null;
+  }
+
+  if (latestStructure.direction === 'BULLISH') {
+    const anchorLow = getLatest(swings, (swing) => swing.type === 'LOW' && swing.index < latestStructure.index);
+    const targetHigh = getLatest(swings, (swing) => swing.type === 'HIGH' && swing.index <= latestStructure.index);
+
+    if (anchorLow && targetHigh) {
+      return {
+        rangeHigh: Math.max(latestStructure.level, targetHigh.price),
+        rangeLow: anchorLow.price,
+        source: 'STRUCTURE_BULLISH',
+      };
+    }
+  }
+
+  if (latestStructure.direction === 'BEARISH') {
+    const anchorHigh = getLatest(swings, (swing) => swing.type === 'HIGH' && swing.index < latestStructure.index);
+    const targetLow = getLatest(swings, (swing) => swing.type === 'LOW' && swing.index <= latestStructure.index);
+
+    if (anchorHigh && targetLow) {
+      return {
+        rangeHigh: anchorHigh.price,
+        rangeLow: Math.min(latestStructure.level, targetLow.price),
+        source: 'STRUCTURE_BEARISH',
+      };
+    }
+  }
+
+  return null;
+};
+
+const detectPriceLocation = (market, swings, structure, trend, referenceRange = null) => {
+  const { candles } = market;
+
+  if (!candles.length) {
+    return EMPTY_LOCATION;
+  }
+
+  const currentPrice = candles[candles.length - 1].close;
+  const recentHigh = getLatest(swings, (swing) => swing.type === 'HIGH');
+  const recentLow = getLatest(swings, (swing) => swing.type === 'LOW');
+  const structureRange = getDominantStructureRange(swings, structure);
+
+  const resolvedRange =
+    referenceRange ||
+    structureRange ||
+    (recentHigh && recentLow
+      ? {
+          rangeHigh: Math.max(recentHigh.price, recentLow.price),
+          rangeLow: Math.min(recentHigh.price, recentLow.price),
+          source: trend === 'RANGE' ? 'INTERNAL_RANGE' : 'LOCAL_SWINGS',
+        }
+      : null);
+
+  if (!resolvedRange) {
+    return {
+      ...EMPTY_LOCATION,
+      currentPrice,
+    };
+  }
+
+  const rangeHigh = resolvedRange.rangeHigh;
+  const rangeLow = resolvedRange.rangeLow;
+  const equilibrium = (rangeHigh + rangeLow) / 2;
+  const rangeSize = Math.max(rangeHigh - rangeLow, Number.EPSILON);
+  const premiumThreshold = equilibrium + rangeSize * 0.1;
+  const discountThreshold = equilibrium - rangeSize * 0.1;
+
+  let state = 'BALANCED';
+  if (currentPrice >= premiumThreshold) {
+    state = 'PREMIUM';
+  } else if (currentPrice <= discountThreshold) {
+    state = 'DISCOUNT';
+  }
+
+  return {
+    currentPrice,
+    equilibrium: Number(equilibrium.toFixed(8)),
+    state,
+    rangeHigh,
+    rangeLow,
+    source: resolvedRange.source,
+  };
+};
+
+const detectZoneInteraction = (market, orderBlocks, fvg, liquidity, options) => {
+  const { candles, trueRangePrefix } = market;
+
+  if (!candles.length) {
+    return EMPTY_ZONE_INTERACTION;
+  }
+
+  const currentPrice = candles[candles.length - 1].close;
+  const averageRange = getRollingAverage(trueRangePrefix, candles.length - 1, 14) || 0;
+  const proximity = Math.max(averageRange * options.proximityFactor, Number.EPSILON);
+
+  const activeOrderBlock =
+    getLatest(
+      orderBlocks,
+      (block) => !block.mitigated && currentPrice >= block.low && currentPrice <= block.high,
+    ) || null;
+
+  const activeFvg =
+    getLatest(
+      fvg,
+      (gap) => !gap.mitigated && currentPrice >= gap.start && currentPrice <= gap.end,
+    ) || null;
+
+  const nearbyLiquidity =
+    getLatest(liquidity, (level) => Math.abs(level.level - currentPrice) <= proximity) || null;
+
+  return {
+    activeOrderBlock,
+    activeFvg,
+    nearbyLiquidity,
+  };
+};
+
+const detectContext = (market, options) => {
+  const { candles, rangePrefix, trueRangePrefix } = market;
+
+  if (!candles.length) {
+    return EMPTY_CONTEXT;
+  }
+
+  const lastIndex = candles.length - 1;
+  const recentRange = getRollingAverage(rangePrefix, lastIndex, options.consolidationWindow);
+  const recentTrueRange = getRollingAverage(trueRangePrefix, lastIndex, options.consolidationWindow);
+  const baselineTrueRange = getRollingAverage(
+    trueRangePrefix,
+    lastIndex,
+    options.consolidationWindow * 2,
+  );
+  const consolidation =
+    Boolean(recentTrueRange) && Boolean(baselineTrueRange) && recentTrueRange <= baselineTrueRange * options.consolidationFactor;
+
+  const lastTime = candles[lastIndex].time;
+  let session = 'UNKNOWN';
+
+  if (typeof lastTime === 'number') {
+    const hour = new Date(lastTime).getUTCHours();
+    if (hour >= 7 && hour < 11) {
+      session = 'LONDON';
+    } else if (hour >= 12 && hour < 17) {
+      session = 'NEW_YORK';
+    } else if (hour >= 0 && hour < 6) {
+      session = 'ASIA';
+    }
+  } else if (typeof lastTime === 'string' && !Number.isNaN(Date.parse(lastTime))) {
+    const hour = new Date(lastTime).getUTCHours();
+    if (hour >= 7 && hour < 11) {
+      session = 'LONDON';
+    } else if (hour >= 12 && hour < 17) {
+      session = 'NEW_YORK';
+    } else if (hour >= 0 && hour < 6) {
+      session = 'ASIA';
+    }
+  }
+
+  let marketState = 'BALANCED';
+  if (consolidation) {
+    marketState = 'CONSOLIDATING';
+  } else if (recentRange > recentTrueRange * 1.1) {
+    marketState = 'EXPANDING';
+  }
+
+  return {
+    marketState,
+    consolidation,
+    session,
+  };
+};
+
+const buildInvalidation = ({ direction, structure, priceLocation, activeOrderBlock }) => {
+  if (direction === 'LONG') {
+    const bearishFailureLevel =
+      getLatest(structure, (event) => event.direction === 'BEARISH')?.level ??
+      activeOrderBlock?.low ??
+      priceLocation.rangeLow;
+
+    return bearishFailureLevel == null
+      ? null
+      : {
+          type: 'PRICE_BELOW_LEVEL',
+          level: bearishFailureLevel,
+        };
+  }
+
+  if (direction === 'SHORT') {
+    const bullishFailureLevel =
+      getLatest(structure, (event) => event.direction === 'BULLISH')?.level ??
+      activeOrderBlock?.high ??
+      priceLocation.rangeHigh;
+
+    return bullishFailureLevel == null
+      ? null
+      : {
+          type: 'PRICE_ABOVE_LEVEL',
+          level: bullishFailureLevel,
+        };
+  }
+
+  return null;
+};
+
+const resolveDirectionalContext = ({ ltfTrend, htfTrend, latestStructure, priceLocation, zoneInteraction }) => {
+  const reasons = [];
+  let direction = 'NEUTRAL';
+  let confidence = 0;
+
+  if (htfTrend === 'UPTREND') {
+    reasons.push('HTF trend is bullish and sets directional dominance.');
+
+    if (
+      latestStructure?.direction === 'BULLISH' ||
+      priceLocation.state === 'DISCOUNT' ||
+      zoneInteraction.activeOrderBlock?.type === 'BULLISH' ||
+      zoneInteraction.activeFvg?.type === 'BULLISH'
+    ) {
+      direction = 'LONG';
+      confidence += 40;
+    }
+  } else if (htfTrend === 'DOWNTREND') {
+    reasons.push('HTF trend is bearish and sets directional dominance.');
+
+    if (
+      latestStructure?.direction === 'BEARISH' ||
+      priceLocation.state === 'PREMIUM' ||
+      zoneInteraction.activeOrderBlock?.type === 'BEARISH' ||
+      zoneInteraction.activeFvg?.type === 'BEARISH'
+    ) {
+      direction = 'SHORT';
+      confidence += 40;
+    }
+  } else if (ltfTrend === 'UPTREND') {
+    reasons.push('HTF is neutral, so LTF bullish trend drives context.');
+    if (latestStructure?.direction !== 'BEARISH') {
+      direction = 'LONG';
+      confidence += 25;
+    }
+  } else if (ltfTrend === 'DOWNTREND') {
+    reasons.push('HTF is neutral, so LTF bearish trend drives context.');
+    if (latestStructure?.direction !== 'BULLISH') {
+      direction = 'SHORT';
+      confidence += 25;
+    }
+  } else {
+    reasons.push('Neither HTF nor LTF provides directional context.');
+  }
+
+  return {
+    direction,
+    confidence,
+    reasons,
+  };
+};
+
+const resolveLocationFilter = ({ direction, priceLocation, zoneInteraction }) => {
+  const reasons = [];
+  let allowed = direction !== 'NEUTRAL';
+  let confidence = 0;
+
+  if (direction === 'LONG') {
+    if (priceLocation.state === 'PREMIUM') {
+      return {
+        direction: 'NEUTRAL',
+        allowed: false,
+        confidence: 0,
+        reasons: ['Long bias blocked because price is in premium.'],
+      };
+    }
+
+    if (priceLocation.state === 'DISCOUNT') {
+      confidence += 20;
+      reasons.push('Price is in discount within the active dealing range.');
+    }
+
+    if (zoneInteraction.activeOrderBlock?.type === 'BULLISH') {
+      confidence += 15;
+      reasons.push('Price is inside an unmitigated bullish order block.');
+    }
+
+    if (zoneInteraction.activeFvg?.type === 'BULLISH') {
+      confidence += 10;
+      reasons.push('Price is inside an unmitigated bullish fair value gap.');
+    }
+  } else if (direction === 'SHORT') {
+    if (priceLocation.state === 'DISCOUNT') {
+      return {
+        direction: 'NEUTRAL',
+        allowed: false,
+        confidence: 0,
+        reasons: ['Short bias blocked because price is in discount.'],
+      };
+    }
+
+    if (priceLocation.state === 'PREMIUM') {
+      confidence += 20;
+      reasons.push('Price is in premium within the active dealing range.');
+    }
+
+    if (zoneInteraction.activeOrderBlock?.type === 'BEARISH') {
+      confidence += 15;
+      reasons.push('Price is inside an unmitigated bearish order block.');
+    }
+
+    if (zoneInteraction.activeFvg?.type === 'BEARISH') {
+      confidence += 10;
+      reasons.push('Price is inside an unmitigated bearish fair value gap.');
+    }
+  } else {
+    allowed = false;
+    reasons.push('No directional bias passed the context layer.');
+  }
+
+  return {
+    direction,
+    allowed,
+    confidence,
+    reasons,
+  };
+};
+
+const resolveTriggerLayer = ({
+  direction,
+  latestStructure,
+  latestDisplacement,
+  latestOrderBlock,
+  nearbyLiquidity,
+  options,
+}) => {
+  const reasons = [];
+  let confirmed = false;
+  let confidence = 0;
+
+  if (direction === 'LONG') {
+    if (latestStructure?.direction === 'BULLISH') {
+      confidence += latestStructure.type === 'CHOCH' ? 8 : 12;
+      reasons.push(`Latest structure event is ${latestStructure.type} bullish.`);
+    }
+
+    if (latestDisplacement?.direction === 'BULLISH') {
+      confidence += 12;
+      reasons.push('Latest displacement is bullish.');
+    }
+
+    if (latestOrderBlock?.type === 'BULLISH' && latestOrderBlock.causedBreak && !latestOrderBlock.mitigated) {
+      confidence += 10;
+      reasons.push('Bullish order block caused a structural break.');
+    }
+
+    if (nearbyLiquidity?.type === 'SELL_SIDE') {
+      confidence += nearbyLiquidity.clustered ? 8 : 4;
+      reasons.push('Sell-side liquidity is positioned as an upside target.');
+    }
+
+    confirmed = confidence >= options.triggerThreshold;
+  } else if (direction === 'SHORT') {
+    if (latestStructure?.direction === 'BEARISH') {
+      confidence += latestStructure.type === 'CHOCH' ? 8 : 12;
+      reasons.push(`Latest structure event is ${latestStructure.type} bearish.`);
+    }
+
+    if (latestDisplacement?.direction === 'BEARISH') {
+      confidence += 12;
+      reasons.push('Latest displacement is bearish.');
+    }
+
+    if (latestOrderBlock?.type === 'BEARISH' && latestOrderBlock.causedBreak && !latestOrderBlock.mitigated) {
+      confidence += 10;
+      reasons.push('Bearish order block caused a structural break.');
+    }
+
+    if (nearbyLiquidity?.type === 'BUY_SIDE') {
+      confidence += nearbyLiquidity.clustered ? 8 : 4;
+      reasons.push('Buy-side liquidity is positioned as a downside target.');
+    }
+
+    confirmed = confidence >= options.triggerThreshold;
+  }
+
+  return {
+    confirmed,
+    confidence,
+    reasons,
+  };
+};
+
+const evaluateDecisionLayers = ({
+  trend,
+  structure,
+  displacements,
+  orderBlocks,
+  htfTrend,
+  priceLocation,
+  zoneInteraction,
+  context,
+  options,
+}) => {
+  const latestStructure = getLatest(structure);
+  const latestDisplacement = getLatest(displacements);
+  const latestOrderBlock = getLatest(orderBlocks);
+  const conflictingStructure =
+    (htfTrend === 'UPTREND' && trend === 'DOWNTREND') ||
+    (htfTrend === 'DOWNTREND' && trend === 'UPTREND');
+
+  const contextResult = resolveDirectionalContext({
+    ltfTrend: trend,
+    htfTrend,
+    latestStructure,
+    priceLocation,
+    zoneInteraction,
+  });
+
+  const locationResult = resolveLocationFilter({
+    direction: contextResult.direction,
+    priceLocation,
+    zoneInteraction,
+  });
+
+  const triggerResult = resolveTriggerLayer({
+    direction: locationResult.direction,
+    latestStructure,
+    latestDisplacement,
+    latestOrderBlock,
+    nearbyLiquidity: zoneInteraction.nearbyLiquidity,
+    options,
+  });
+
+  let confidence =
+    contextResult.confidence +
+    locationResult.confidence +
+    triggerResult.confidence;
+
+  const reasons = [
+    ...contextResult.reasons,
+    ...locationResult.reasons,
+    ...triggerResult.reasons,
+  ];
+
+  if (context.consolidation) {
+    confidence = Math.max(0, confidence - 10);
+    reasons.push('Consolidation reduces confidence because expansion has not fully resolved.');
+  } else if (context.marketState === 'EXPANDING') {
+    confidence += 5;
+    reasons.push('Range expansion supports directional continuation.');
+  }
+
+  if (context.session === 'LONDON' || context.session === 'NEW_YORK') {
+    confidence += 5;
+    reasons.push(`Current session is ${context.session}, which supports directional participation.`);
+  }
+
+  if (conflictingStructure) {
+    reasons.push('HTF and LTF trends conflict, so directional context is invalid.');
+  }
+
+  return {
+    contextResult,
+    locationResult,
+    triggerResult,
+    conflictingStructure,
+    confidence: clamp(confidence, 0, 100),
+    reasons,
+  };
+};
+
+const scoreBias = ({ structure, priceLocation, zoneInteraction, evaluation }) => {
+  if (evaluation.conflictingStructure || !evaluation.locationResult.allowed || !evaluation.triggerResult.confirmed) {
+    return {
+      direction: 'NEUTRAL',
+      confidence: clamp(evaluation.confidence, 0, 60),
+      reasoning: evaluation.reasons.join(' '),
+      invalidation: null,
+    };
+  }
+
+  const direction = evaluation.locationResult.direction;
+
+  return {
+    direction,
+    confidence: evaluation.confidence,
+    reasoning: evaluation.reasons.join(' '),
+    invalidation: buildInvalidation({
+      direction,
+      structure,
+      priceLocation,
+      activeOrderBlock: zoneInteraction.activeOrderBlock,
+    }),
+  };
+};
+
+const classifySetup = ({ trend, direction, structure }) => {
+  if (direction !== 'LONG' && direction !== 'SHORT') {
+    return 'NONE';
+  }
+
+  const latestStructure = getLatest(structure);
+  const trendAligned =
+    (direction === 'LONG' && trend === 'UPTREND') ||
+    (direction === 'SHORT' && trend === 'DOWNTREND');
+
+  if (
+    latestStructure?.type === 'CHOCH' &&
+    ((direction === 'LONG' && latestStructure.direction === 'BULLISH') ||
+      (direction === 'SHORT' && latestStructure.direction === 'BEARISH'))
+  ) {
+    return 'REVERSAL';
+  }
+
+  if (trendAligned && latestStructure?.type !== 'CHOCH') {
+    return 'CONTINUATION';
+  }
+
+  return 'NONE';
+};
+
+const isAlignedZone = (zone, direction) =>
+  Boolean(zone) &&
+  zone.type === direction &&
+  !zone.mitigated;
+
+const isStructurallyRelevantZone = (zone) =>
+  Boolean(zone) && (zone.causedBreak === true || zone.strength === 'HIGH');
+
+const isPriceInsideZone = (price, zone) =>
+  Boolean(zone) && price >= zone.low && price <= zone.high;
+
+const normalizeFvgToEntryZone = (gap) => {
+  if (!gap) {
+    return null;
+  }
+
+  return {
+    type: gap.type,
+    low: Math.min(gap.start, gap.end),
+    high: Math.max(gap.start, gap.end),
+    source: 'FVG',
+    index: gap.index,
+    time: gap.time,
+    mitigated: gap.mitigated,
+    causedBreak: false,
+    strength: gap.size > 0 ? 'HIGH' : 'NORMAL',
+  };
+};
+
+const getPreferredEntryZone = ({ direction, orderBlocks, fvg, currentPrice, currentIndex, options }) => {
+  if (direction !== 'LONG' && direction !== 'SHORT') {
+    return null;
+  }
+
+  const directionalType = direction === 'LONG' ? 'BULLISH' : 'BEARISH';
+  const matchingOrderBlock = getLatest(
+    orderBlocks,
+    (block) =>
+      isAlignedZone(block, directionalType) &&
+      isStructurallyRelevantZone(block) &&
+      (block.causedBreak || currentIndex - block.index <= options.entryRecencyWindow),
+  );
+
+  if (matchingOrderBlock) {
+    return {
+      zone: {
+        type: directionalType,
+        low: matchingOrderBlock.low,
+        high: matchingOrderBlock.high,
+        source: 'ORDER_BLOCK',
+        index: matchingOrderBlock.index,
+        time: matchingOrderBlock.time,
+        causedBreak: matchingOrderBlock.causedBreak,
+        mitigated: matchingOrderBlock.mitigated,
+        strength: matchingOrderBlock.strength,
+      },
+      inside: isPriceInsideZone(currentPrice, matchingOrderBlock),
+    };
+  }
+
+  const matchingFvg = getLatest(
+    fvg,
+    (gap) => gap.type === directionalType && !gap.mitigated && currentIndex - gap.index <= options.entryRecencyWindow,
+  );
+
+  if (matchingFvg) {
+    const normalizedGap = normalizeFvgToEntryZone(matchingFvg);
+    return {
+      zone: normalizedGap,
+      inside: isPriceInsideZone(currentPrice, normalizedGap),
+    };
+  }
+
+  return null;
+};
+
+const getNearestDirectionalLiquidityTarget = ({ direction, liquidity, currentPrice, options }) => {
+  const targetType = direction === 'LONG' ? 'BUY_SIDE' : direction === 'SHORT' ? 'SELL_SIDE' : null;
+
+  if (!targetType || !Array.isArray(liquidity)) {
+    return null;
+  }
+
+  const candidates = liquidity
+    .filter((level) => level.type === targetType && level.touches >= options.minLiquidityTouches)
+    .filter((level) => (direction === 'LONG' ? level.level > currentPrice : level.level < currentPrice))
+    .sort((left, right) =>
+      Math.abs(left.level - currentPrice) - Math.abs(right.level - currentPrice),
+    );
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  const target = candidates[0];
+  return {
+    type: target.type,
+    level: target.level,
+    touches: target.touches,
+  };
+};
+
+const resolveTradeQuality = ({ confidence, entryZone, htfTrend, direction }) => {
+  const htfAligned =
+    (direction === 'LONG' && htfTrend === 'UPTREND') ||
+    (direction === 'SHORT' && htfTrend === 'DOWNTREND');
+  const strongZone = entryZone?.source === 'ORDER_BLOCK'
+    ? entryZone?.causedBreak || entryZone?.strength === 'HIGH'
+    : entryZone?.strength === 'HIGH';
+
+  if (confidence >= 75 && strongZone && htfAligned) {
+    return 'HIGH';
+  }
+
+  if (confidence >= 55 && (strongZone || htfAligned)) {
+    return 'MEDIUM';
+  }
+
+  return 'LOW';
+};
+
+const resolveTradeState = (analysis, evaluation) => {
+  const {
+    trend,
+    structure,
+    liquidity,
+    orderBlocks,
+    fvg,
+    _internals,
+    _meta,
+  } = analysis;
+
+  const options = _meta?.options || DEFAULT_OPTIONS;
+  const currentPrice = _internals?.priceLocation?.currentPrice ?? null;
+  const currentIndex = _meta?.currentIndex ?? 0;
+
+  const direction = evaluation.locationResult.direction;
+  const setup = classifySetup({ trend, direction, structure });
+  const contextValid =
+    direction !== 'NEUTRAL' &&
+    !evaluation.conflictingStructure &&
+    !(_internals?.context?.consolidation && _internals?.context?.marketState !== 'EXPANDING');
+  const locationValid = evaluation.locationResult.allowed;
+  const triggerReady = evaluation.triggerResult.confirmed;
+  const preferredEntry = getPreferredEntryZone({
+    direction,
+    orderBlocks,
+    fvg,
+    currentPrice,
+    currentIndex,
+    options,
+  });
+  const entryZone = preferredEntry?.zone || null;
+  const priceInsideZone = Boolean(preferredEntry?.inside);
+  const structurallyRelevant =
+    entryZone?.source === 'ORDER_BLOCK'
+      ? isStructurallyRelevantZone(entryZone)
+      : entryZone?.source === 'FVG'
+        ? true
+        : false;
+  const hasZoneConfluence =
+    Boolean(entryZone) &&
+    (_internals?.zoneInteraction?.activeOrderBlock || _internals?.zoneInteraction?.activeFvg);
+  const entryTimingValid =
+    Boolean(entryZone) &&
+    priceInsideZone &&
+    structurallyRelevant &&
+    (!options.requireZoneConfluence || hasZoneConfluence);
+  const latestStructure = getLatest(structure);
+  const latestDisplacement = getLatest(_internals?.displacements || []);
+  const displacementConfirmsEntry =
+    entryZone &&
+    latestDisplacement &&
+    ((direction === 'LONG' && latestDisplacement.direction === 'BULLISH' && latestDisplacement.index >= entryZone.index) ||
+      (direction === 'SHORT' && latestDisplacement.direction === 'BEARISH' && latestDisplacement.index >= entryZone.index));
+  const structureConfirmsEntry =
+    latestStructure &&
+    ((direction === 'LONG' && latestStructure.direction === 'BULLISH') ||
+      (direction === 'SHORT' && latestStructure.direction === 'BEARISH'));
+  const entryConfirmed = Boolean(displacementConfirmsEntry || structureConfirmsEntry);
+  const target = getNearestDirectionalLiquidityTarget({
+    direction,
+    liquidity,
+    currentPrice,
+    options,
+  });
+
+  const reasons = [...evaluation.reasons];
+
+  if (!contextValid) {
+    reasons.push('Trade state is NO_TRADE because context validity failed.');
+    return {
+      state: 'NO_TRADE',
+      direction: 'NEUTRAL',
+      setup: 'NONE',
+      quality: 'LOW',
+      confidence: clamp(evaluation.confidence, 0, 60),
+      reasoning: reasons.join(' '),
+      entryZone: null,
+      target: null,
+    };
+  }
+
+  if (!locationValid) {
+    reasons.push('Trade state is NO_TRADE because location validity failed.');
+    return {
+      state: 'NO_TRADE',
+      direction: 'NEUTRAL',
+      setup: 'NONE',
+      quality: 'LOW',
+      confidence: clamp(evaluation.confidence, 0, 60),
+      reasoning: reasons.join(' '),
+      entryZone: null,
+      target: null,
+    };
+  }
+
+  const continuationAllowed = setup !== 'CONTINUATION' || options.allowContinuationEntries;
+
+  if (
+    triggerReady &&
+    entryTimingValid &&
+    entryConfirmed &&
+    evaluation.confidence >= options.minConfidenceForReady &&
+    continuationAllowed
+  ) {
+    reasons.push('Trade state is READY_TO_ENTER because context, location, trigger, and timing all pass.');
+    return {
+      state: 'READY_TO_ENTER',
+      direction,
+      setup,
+      quality: resolveTradeQuality({
+        confidence: evaluation.confidence,
+        entryZone,
+        htfTrend: _meta?.htfTrend,
+        direction,
+      }),
+      confidence: evaluation.confidence,
+      reasoning: reasons.join(' '),
+      entryZone,
+      target,
+    };
+  }
+
+  reasons.push('Trade state is WAIT_FOR_PULLBACK because direction is valid but entry confirmation is incomplete.');
+  return {
+    state: 'WAIT_FOR_PULLBACK',
+    direction,
+    setup,
+    quality: resolveTradeQuality({
+      confidence: evaluation.confidence,
+      entryZone,
+      htfTrend: _meta?.htfTrend,
+      direction,
+    }),
+    confidence: clamp(evaluation.confidence, 0, 85),
+    reasoning: reasons.join(' '),
+    entryZone,
+    target,
+  };
+};
+
+const runSingleTimeframeAnalysis = (data, options, referenceRange = null) => {
+  const candles = normalizeCandles(data);
+
+  if (candles.length < 3) {
+    return {
+      ...EMPTY_OUTPUT,
+      _internals: {
+        displacements: [],
+        priceLocation: EMPTY_LOCATION,
+        zoneInteraction: EMPTY_ZONE_INTERACTION,
+        context: EMPTY_CONTEXT,
+        dealingRange: null,
+        currentIndex: 0,
+      },
+    };
+  }
+
+  const market = enrichCandles(candles);
+  const swings = detectSwings(market, options);
+  const structure = detectStructure(market, swings);
+  const trend = determineTrend(swings, structure);
+  const displacements = detectDisplacements(market, structure, options);
+  const fvg = detectFvg(market, displacements);
+  const orderBlocks = detectOrderBlocks(market, displacements, structure);
+  const liquidity = detectLiquidity(swings, market, options);
+  const dealingRange = getDominantStructureRange(swings, structure);
+  const priceLocation = detectPriceLocation(market, swings, structure, trend, referenceRange);
+  const zoneInteraction = detectZoneInteraction(market, orderBlocks, fvg, liquidity, options);
+  const context = detectContext(market, options);
+
+  return {
+    trend,
+    structure,
+    liquidity,
+    orderBlocks,
+    fvg,
+    bias: {
+      direction: 'NEUTRAL',
+      confidence: 0,
+      reasoning: 'Bias is resolved after context, location, and trigger checks.',
+      invalidation: null,
+    },
+    _internals: {
+      displacements,
+      priceLocation,
+      zoneInteraction,
+      context,
+      dealingRange,
+      currentIndex: candles.length - 1,
+    },
+  };
+};
+
+const resolveInput = (input) => {
+  if (Array.isArray(input)) {
+    return {
+      ltf: input,
+      htf: [],
+    };
+  }
+
+  if (input && typeof input === 'object') {
+    return {
+      ltf: Array.isArray(input.ltf) ? input.ltf : [],
+      htf: Array.isArray(input.htf) ? input.htf : [],
+    };
+  }
+
+  return {
+    ltf: [],
+    htf: [],
+  };
+};
+
+const stripInternals = (analysis) => ({
+  trend: analysis.trend,
+  structure: analysis.structure,
+  liquidity: analysis.liquidity,
+  orderBlocks: analysis.orderBlocks,
+  fvg: analysis.fvg,
+  bias: analysis.bias,
+  trade: analysis.trade,
+});
+
+const analyzeMarket = (input, customOptions = {}) => {
+  const options = { ...DEFAULT_OPTIONS, ...customOptions };
+  const { ltf, htf } = resolveInput(input);
+
+  const htfAnalysis = htf.length ? runSingleTimeframeAnalysis(htf, options) : null;
+  const referenceRange = htfAnalysis?._internals.dealingRange || null;
+  const ltfAnalysis = runSingleTimeframeAnalysis(ltf, options, referenceRange);
+  const currentIndex = ltfAnalysis._internals.currentIndex;
+
+  const evaluation = evaluateDecisionLayers({
+    trend: ltfAnalysis.trend,
+    structure: ltfAnalysis.structure,
+    displacements: ltfAnalysis._internals.displacements,
+    orderBlocks: ltfAnalysis.orderBlocks,
+    htfTrend: htfAnalysis?.trend,
+    priceLocation: ltfAnalysis._internals.priceLocation,
+    zoneInteraction: ltfAnalysis._internals.zoneInteraction,
+    context: ltfAnalysis._internals.context,
+    options,
+  });
+
+  const bias = scoreBias({
+    structure: ltfAnalysis.structure,
+    priceLocation: ltfAnalysis._internals.priceLocation,
+    zoneInteraction: ltfAnalysis._internals.zoneInteraction,
+    evaluation,
+  });
+
+  const fullAnalysis = {
+    ...ltfAnalysis,
+    bias,
+    _meta: {
+      options,
+      htfTrend: htfAnalysis?.trend ?? null,
+      currentIndex,
+    },
+  };
+
+  fullAnalysis._meta.evaluation = evaluation;
+  fullAnalysis.bias = scoreBias({
+    structure: ltfAnalysis.structure,
+    priceLocation: ltfAnalysis._internals.priceLocation,
+    zoneInteraction: ltfAnalysis._internals.zoneInteraction,
+    evaluation,
+  });
+
+  const trade = resolveTradeState(fullAnalysis, evaluation);
+
+  return stripInternals({
+    ...fullAnalysis,
+    trade,
+  });
+};
+
+/* ── END SMC ENGINE ── */
+
+/* ══════════════════════════════════════
+   SMC ENGINE INTEGRATION LAYER
+══════════════════════════════════════ */
+
+function runSmcEngine(ltfCandles, htfCandles) {
+  try {
+    if (!ltfCandles || ltfCandles.length < 10) return null;
+    const input = htfCandles && htfCandles.length >= 10
+      ? { ltf: ltfCandles, htf: htfCandles }
+      : ltfCandles;
+    return analyzeMarket(input);
+  } catch(e) {
+    console.warn('[SMC Engine] analyzeMarket error:', e.message);
+    return null;
+  }
+}
+
+function smcEngineToUi(r) {
+  if (!r) return null;
+  const { trade, bias, trend } = r;
+  const dir   = trade?.direction || 'NEUTRAL';
+  const st    = trade?.state || 'NO_TRADE';
+  const conf  = typeof trade?.confidence === 'number' ? trade.confidence : 0;
+  const setup = trade?.setup || 'NONE';
+  const qual  = trade?.quality || 'LOW';
+  const ez    = trade?.entryZone;
+  const tgt   = trade?.target;
+
+  let badgeClass = 'b-skip';
+  if (st === 'READY_TO_ENTER') {
+    badgeClass = dir === 'LONG' ? 'b-buy' : dir === 'SHORT' ? 'b-sell' : 'b-wait';
+  } else if (st === 'WAIT_FOR_PULLBACK') {
+    badgeClass = 'b-wait';
+  }
+
+  const latestStruct = Array.isArray(r.structure) && r.structure.length
+    ? r.structure[r.structure.length - 1] : null;
+
+  return {
+    stateLabel:     st.replace(/_/g, ' '),
+    direction:      dir,
+    confidence:     conf,
+    setup,
+    quality:        qual,
+    badgeClass,
+    entryLow:       ez ? fmtPrice(ez.low)  : '—',
+    entryHigh:      ez ? fmtPrice(ez.high) : '—',
+    entrySource:    ez?.source || '—',
+    targetLevel:    tgt ? fmtPrice(tgt.level) : '—',
+    targetType:     tgt?.type || '—',
+    biasDir:        bias?.direction || 'NEUTRAL',
+    biasConf:       typeof bias?.confidence === 'number' ? bias.confidence : 0,
+    biasReason:     bias?.reasoning || '',
+    trendLabel:     trend || 'RANGE',
+    structureCount: Array.isArray(r.structure)   ? r.structure.length   : 0,
+    fvgCount:       Array.isArray(r.fvg)         ? r.fvg.length         : 0,
+    obCount:        Array.isArray(r.orderBlocks) ? r.orderBlocks.length : 0,
+    latestStructure: latestStruct,
+  };
+}
+
+function renderSmcEnginePanel(ui) {
+  if (!ui) return '';
+
+  const ringColor   = ui.confidence >= 65 ? '#00e676' : ui.confidence >= 45 ? '#ffd54f' : '#5a6470';
+  const dirColor    = ui.direction === 'LONG' ? 'var(--green)' : ui.direction === 'SHORT' ? 'var(--red)' : 'var(--muted)';
+  const qualColor   = ui.quality === 'HIGH' ? 'var(--green)' : ui.quality === 'MEDIUM' ? 'var(--gold)' : 'var(--muted)';
+  const trendColor  = ui.trendLabel === 'UPTREND' ? 'var(--green)' : ui.trendLabel === 'DOWNTREND' ? 'var(--red)' : 'var(--gold)';
+  const biasColor   = ui.biasDir === 'LONG' ? 'var(--green)' : ui.biasDir === 'SHORT' ? 'var(--red)' : 'var(--muted)';
+  const ls = ui.latestStructure;
+  const structLabel = ls ? ls.type + ' · ' + ls.direction : 'None';
+
+  return '<div class="smc-engine-panel">' +
+    '<div class="smc-engine-header">' +
+      '<div class="smc-engine-label"><span class="smc-engine-dot"></span>SMC ENGINE OUTPUT</div>' +
+      '<span class="badge ' + ui.badgeClass + '" style="font-size:10px;">' + ui.direction + ' · ' + ui.stateLabel + '</span>' +
+    '</div>' +
+    '<div class="smc-engine-grid">' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Engine Signal</span><span class="smc-cell-val" style="color:' + dirColor + ';">' + ui.direction + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Trade State</span><span class="smc-cell-val" style="font-size:10px;">' + ui.stateLabel + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Setup Type</span><span class="smc-cell-val" style="font-size:10px;">' + ui.setup + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Quality</span><span class="smc-cell-val" style="color:' + qualColor + ';">' + ui.quality + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Confidence</span><span class="smc-cell-val" style="color:' + ringColor + ';">' + ui.confidence + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Trend</span><span class="smc-cell-val" style="color:' + trendColor + ';">' + ui.trendLabel + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Bias</span><span class="smc-cell-val" style="color:' + biasColor + ';">' + ui.biasDir + '</span></div>' +
+      '<div class="smc-engine-cell"><span class="smc-cell-lbl">Bias Conf</span><span class="smc-cell-val">' + ui.biasConf + '</span></div>' +
+    '</div>' +
+    '<div class="smc-engine-zones">' +
+      '<div class="smc-zone-block"><span class="smc-zone-lbl">Entry Zone</span><span class="smc-zone-val">' + ui.entryLow + ' – ' + ui.entryHigh + '</span><span class="smc-zone-src">' + ui.entrySource + '</span></div>' +
+      '<div class="smc-zone-block"><span class="smc-zone-lbl">Target</span><span class="smc-zone-val" style="color:var(--green);">' + ui.targetLevel + '</span><span class="smc-zone-src">' + ui.targetType + '</span></div>' +
+      '<div class="smc-zone-block"><span class="smc-zone-lbl">Structure</span><span class="smc-zone-val" style="font-size:10px;">' + structLabel + '</span><span class="smc-zone-src">' + ui.structureCount + ' events · ' + ui.fvgCount + ' FVG · ' + ui.obCount + ' OB</span></div>' +
+    '</div>' +
+    (ui.biasReason ? '<div class="smc-bias-reason"><span class="smc-cell-lbl">Engine Reasoning</span><span class="smc-bias-text">' + ui.biasReason + '</span></div>' : '') +
+  '</div>';
+}
+
+
 /* ══════════════════════════════════════
    ENDPOINTS
 ══════════════════════════════════════ */
@@ -2469,7 +4205,7 @@ function analyzeStructure(candles, tf) {
       }
     }
   }
-  if (!mostRecentLowerHigh) mostRecentLowerHigh = prevHigh.price < recentHigh.price ? prevHigh : recentHigh;
+  if (!mostRecentLowerHigh) mostRecentLowerHigh = recentHigh;
 
   // Find the most recent Higher Low in an uptrend
   let mostRecentHigherLow = null;
@@ -2481,7 +4217,7 @@ function analyzeStructure(candles, tf) {
       }
     }
   }
-  if (!mostRecentHigherLow) mostRecentHigherLow = prevLow.price > recentLow.price ? prevLow : recentLow;
+  if (!mostRecentHigherLow) mostRecentHigherLow = recentLow;
 
   // Strong CHoCH: requires sweep before the close
   if (recentBearish && sweepLow && last.close > mostRecentLowerHigh.price) {
@@ -2505,15 +4241,15 @@ function analyzeStructure(candles, tf) {
   const sweepLowRecent  = candles.slice(-20).some(c => c.low  < recentLow.price  && c.close > recentLow.price);
   const sweepHighRecent = candles.slice(-20).some(c => c.high > recentHigh.price && c.close < recentHigh.price);
 
-  if (sweepLowRecent && last.close > prevHigh.price) {
+  if (sweepLowRecent && higherHighs && last.close > prevHigh.price) {
     mss = { direction: 'Bullish', type: 'MSS',
       label: 'MSS ↑', confidence: choch ? 'High' : 'Medium',
-      trigger: 'SSL swept → close above prev High → structure flipped bullish' };
+      trigger: 'SSL swept → HH formed → structure flipped bullish' };
   }
-  if (sweepHighRecent && last.close < prevLow.price) {
+  if (sweepHighRecent && lowerLows && last.close < prevLow.price) {
     mss = { direction: 'Bearish', type: 'MSS',
       label: 'MSS ↓', confidence: choch ? 'High' : 'Medium',
-      trigger: 'BSL swept → close below prev Low → structure flipped bearish' };
+      trigger: 'BSL swept → LL formed → structure flipped bearish' };
   }
 
   let smcEvent = null;
@@ -2624,9 +4360,7 @@ function deriveTrade(row, primary, higherAnalyses, tf) {
   const htfBull  = higherAnalyses.filter(a => a.bias === 'Bullish').length;
   const htfBear  = higherAnalyses.filter(a => a.bias === 'Bearish').length;
   const htfRange = higherAnalyses.filter(a => a.bias === 'Range').length;
-  const mtfBias  = higherAnalyses.length === 0
-    ? (primary.bias === 'Bullish' ? 'Bullish' : primary.bias === 'Bearish' ? 'Bearish' : 'Ranging')
-    : htfBull > htfBear ? 'Bullish'
+  const mtfBias  = htfBull > htfBear ? 'Bullish'
     : htfBear > htfBull ? 'Bearish'
     : htfRange === higherAnalyses.length ? 'Ranging'
     : 'Mixed';
@@ -2641,7 +4375,7 @@ function deriveTrade(row, primary, higherAnalyses, tf) {
 
   // Hard WAIT conditions
   const htfRanging = mtfBias === 'Ranging';
-  const htfMixedNoMss = mtfBias === 'Mixed' && !primary.mss && higherAnalyses.length >= 2;
+  const htfMixedNoMss = mtfBias === 'Mixed' && !primary.mss;
 
   if (!derivativesRule.skip && !htfRanging && !htfMixedNoMss) {
     // MSS unlocks signal (highest confidence)
@@ -2692,17 +4426,16 @@ function deriveTrade(row, primary, higherAnalyses, tf) {
     const mrlh = primary.mostRecentLowerHigh?.price;
     const mrhl = primary.mostRecentHigherLow?.price;
 
-    // LONG rabbit: close above most recent Lower High with strong body + volume
-    // NOTE: sweep presence is allowed — it scores higher, not disqualified
-    if (bodyStrong && volQualifies
+    // LONG rabbit: close above most recent Lower High, no sweep preceded it
+    if (bodyStrong && volQualifies && !primary.sweepLow && !primary.sweepHigh
         && mrlh && lastCandle.close > mrlh && lastCandle.close > lastCandle.open) {
       rabbitSide = 'LONG';
       rabbitBreakLevel = mrlh;
       rabbitCandle = lastCandle;
     }
 
-    // SHORT rabbit: close below most recent Higher Low with strong body + volume
-    if (!rabbitSide && bodyStrong && volQualifies
+    // SHORT rabbit: close below most recent Higher Low, no sweep preceded it
+    if (!rabbitSide && bodyStrong && volQualifies && !primary.sweepLow && !primary.sweepHigh
         && mrhl && lastCandle.close < mrhl && lastCandle.close < lastCandle.open) {
       rabbitSide = 'SHORT';
       rabbitBreakLevel = mrhl;
@@ -3035,6 +4768,14 @@ async function analyzeRow(row, tf) {
   row.trend        = primary.trend;
   row.structureEvent = primary.structureEvent;
   row._scanTf      = tf;
+
+  // ── SMC ENGINE ──
+  try {
+    const smcRaw = runSmcEngine(candleSets[0], candleSets[1] || null);
+    row.smcEngine   = smcRaw;
+    row.smcEngineUi = smcEngineToUi(smcRaw);
+  } catch(e) { row.smcEngine = null; row.smcEngineUi = null; }
+
   return row;
 }
 
@@ -3054,7 +4795,7 @@ async function scanMarket() {
   el.scanBtn.disabled = true;
   el.scanBtn.textContent = 'Scanning…';
   showError('');
-  el.rows.innerHTML = '<tr><td colspan="10" class="empty-row">Scanning…</td></tr>';
+  el.rows.innerHTML = '<tr><td colspan="12" class="empty-row">Scanning…</td></tr>';
   setStatus('Starting scan', 'live');
   setProgress('Starting scan', 0, 0, '', 0);
   el.mPairs.textContent = '…';
@@ -3163,7 +4904,7 @@ function renderRows(rows) {
   });
 
   if (!filtered.length) {
-    el.rows.innerHTML = '<tr><td colspan="10" class="empty-row">No pairs match the current filters.</td></tr>';
+    el.rows.innerHTML = '<tr><td colspan="12" class="empty-row">No pairs match the current filters.</td></tr>';
     return;
   }
 
@@ -3188,6 +4929,8 @@ function renderRows(rows) {
       <td class="col-ls">${row.longShortRatio ? row.longShortRatio.toFixed(2) : '—'}</td>
       <td class="col-trend" style="font-size:11px;">${row.trend || '—'}</td>
       <td class="col-bias"><span class="badge b-${biasKey}">${row.bias || '—'}</span></td>
+      <td class="col-smc-sig">${row.smcEngineUi ? '<span class="badge ' + row.smcEngineUi.badgeClass + '" style="font-size:9px;">' + row.smcEngineUi.direction + '</span>' : '<span class="score-low">—</span>'}</td>
+      <td class="col-smc-conf">${row.smcEngineUi ? '<span class="score-num ' + (row.smcEngineUi.confidence >= 65 ? "score-high" : row.smcEngineUi.confidence >= 45 ? "score-mid" : "score-low") + '">' + row.smcEngineUi.confidence + '</span>' : '<span class="score-low">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -3580,7 +5323,8 @@ function renderDetail(row, targetEl, tf) {
       ? `<span style="color:var(--red);font-size:10px;">${trade.derivAdj}pts penalty</span>`
       : `<span style="color:var(--muted);font-size:10px;">neutral</span>`;
 
-  targetEl.innerHTML = `
+  const _smcPanel = (row.smcEngineUi) ? renderSmcEnginePanel(row.smcEngineUi) : '';
+  targetEl.innerHTML = _smcPanel + `
     <div class="detail-meta">
       <div class="score-ring-wrap" title="Confluence score: ${trade.score}/100">
         <svg viewBox="0 0 72 72">
@@ -3978,6 +5722,13 @@ async function runSingleScan() {
     row.trend        = primary.trend;
     row.structureEvent = primary.structureEvent;
     row._scanTf      = tf;
+
+    // ── SMC ENGINE (single coin) ──
+    try {
+      const smcRaw2 = runSmcEngine(candleSets[0], candleSets[1] || null);
+      row.smcEngine   = smcRaw2;
+      row.smcEngineUi = smcEngineToUi(smcRaw2);
+    } catch(e) { row.smcEngine = null; row.smcEngineUi = null; }
 
     state._singleRow    = row;
     state._singleSymbol = symbol;
